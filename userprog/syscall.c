@@ -60,6 +60,9 @@ void syscall_init(void)
 void syscall_handler(struct intr_frame *f UNUSED)
 {
 	// TODO: Your implementation goes here.
+	printf("system call!\n");
+	// thread_exit();
+
 	switch (f->R.rax)
 	{
 	/* Projects 2 and later. */
@@ -110,6 +113,8 @@ void syscall_handler(struct intr_frame *f UNUSED)
 
 	/* Write to a file. */
 	case SYS_WRITE:
+		// printf("10?!");
+		// rdi, rsi, rdx // fd, buffer, size
 		break;
 
 	/* Change position in a file. */
@@ -189,8 +194,56 @@ void check_address(uintptr_t *addr)
 {
 	struct thread *t = thread_current();
 	/* TODO : User Memory Access */
-	if (!is_user_vaddr(addr) || addr == NULL || pml4_get_page(t->pml4, addr)==NULL){
-		printf("잘못된 참조입니다!\n");
+	if(!is_user_vaddr(addr) || addr == NULL || !pml4_get_page(t->pml4, addr)){
+		printf("check_address~!!");
 		exit(-1);
 	}
+}
+
+/* get_argument()
+ * 유저 스택에 있는 인자들을 커널에 저장하는 함수
+ * 스택 포인터(_if->rsp)에 count(인자의 개수) 만큼의 데이터를 arg에 저장
+ * int *arg (스택 메모리가 아닌 커널 영역)
+ */
+// void get_argument(uintptr_t *rsp, int *arg, int count)
+// {
+// 	*arg = *rsp + 16;
+// 	for(int i=0; i<count; i++){
+// 		check_address(*arg);
+// 		*arg++;
+// 	}
+// 	check_address()
+
+// }
+
+void halt(void){
+	power_off();
+}
+
+void exit(int status){
+	struct  thread *t = thread_current();
+	printf("%s: exit(%d)\n", t->name, status);
+	thread_exit();
+}
+
+bool create(const char *file, unsigned initial_size){
+	check_address(file);
+	return filesys_create (file, initial_size);
+	// if(filesys_create (file, initial_size)){
+	// 	return true;
+	// }
+	// else{
+	// 	return false;
+	// }
+}
+
+bool remove(const char *file){
+	check_address(file);
+	return filesys_remove (file);
+	// if(filesys_remove (file)){
+	// 	return true;
+	// }
+	// else{
+	// 	return false;
+	// }
 }
