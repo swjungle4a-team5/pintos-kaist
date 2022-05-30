@@ -60,8 +60,6 @@ void syscall_init(void)
 void syscall_handler(struct intr_frame *f UNUSED)
 {
 	// TODO: Your implementation goes here.
-	printf("system call!\n");
-	// thread_exit();
 
 	switch (f->R.rax)
 	{
@@ -140,7 +138,7 @@ void syscall_handler(struct intr_frame *f UNUSED)
 		break;
 	}
 
-	//thread_exit();
+	thread_exit();
 }
 
 void halt(void)
