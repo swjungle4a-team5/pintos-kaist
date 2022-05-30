@@ -5,15 +5,24 @@
 #include "threads/thread.h"
 #include "threads/loader.h"
 #include "userprog/gdt.h"
+#include "userprog/process.h"
 #include "threads/flags.h"
 #include "intrinsic.h"
-// #include "init.h"
-#include "lib/user/syscall.h"
+#include "threads/init.h"
+#include "filesys/filesys.h"
+
+
+/* 헤더 추가 ?? */
 
 void syscall_entry(void);
 void syscall_handler(struct intr_frame *);
 void check_address(uintptr_t *addr);
-void get_argument(uintptr_t *rsp, int *arg, int count);
+
+void halt(void);
+void exit (int status);
+bool create (const char *file, unsigned initial_size);
+bool remove (const char *file);
+pid_t fork(const char* thread_name, struct intr_frame *if_);
 
 /* System call.
  *
@@ -50,27 +59,23 @@ void syscall_init(void)
  */
 void syscall_handler(struct intr_frame *f UNUSED)
 {
-	check_address(f->rsp);
-
 	// TODO: Your implementation goes here.
-	printf("system call!\n");
-	thread_exit();
-
 	switch (f->R.rax)
 	{
-
 	/* Projects 2 and later. */
 	/* Halt the operating system. */
 	case SYS_HALT:
-		power_off();
+		halt();
 		break;
 
 	/* Terminate this process. */
 	case SYS_EXIT:
+		exit(f->R.rdi);
 		break;
 
 	/* Clone current process. */
 	case SYS_FORK:
+		f->R.rax = fork(f->R.rdi, f);
 		break;
 
 	/* Switch current process. */
@@ -83,10 +88,12 @@ void syscall_handler(struct intr_frame *f UNUSED)
 
 	/* Create a file. */
 	case SYS_CREATE:
+		f->R.rax = create(f->R.rdi, f->R.rsi);
 		break;
 
 	/* Delete a file. */
 	case SYS_REMOVE:
+		f->R.rax = remove(f->R.rdi);
 		break;
 
 	/* Open a file. */
@@ -127,6 +134,51 @@ void syscall_handler(struct intr_frame *f UNUSED)
 	case SYS_UMOUNT:
 		break;
 	}
+
+	//thread_exit();
+}
+
+void halt(void)
+{
+	power_off();
+}
+
+void exit (int status)
+{	
+	/* USERPROG일 때, thread_exit()는 prcoess_exit()를 호출 */
+	/* status 사용법은 ? */ 
+	/* 만약, 부모 프로세스가 wait중이라면, 해당 status가 반환된다. */
+	struct thread *t = thread_current();
+	printf("name:%s exit_status:%d", t->name, status);
+	thread_exit();
+}
+
+bool create (const char *file, unsigned initial_size)
+{
+	check_address(file);
+	if (filesys_create(file, initial_size)){
+		printf("file create success\n");
+		return true;
+	}
+	printf("file create fail\n");
+	return false;
+}
+bool remove (const char *file)
+{
+	check_address(file);
+	if (filesys_remove(file)){
+		printf("file remove success\n");
+		return true;
+	}
+	printf("file remove fail\n");
+	return false;
+}
+pid_t fork(const char* thread_name, struct intr_frame *if_)
+{
+	check_address(thread_name);
+
+	process_fork(thread_name, if_);
+
 }
 
 /* check_address()
@@ -135,14 +187,10 @@ void syscall_handler(struct intr_frame *f UNUSED)
  */
 void check_address(uintptr_t *addr)
 {
+	struct thread *t = thread_current();
 	/* TODO : User Memory Access */
-}
-
-/* get_argument()
- * 유저 스택에 있는 인자들을 커널에 저장하는 함수
- * 스택 포인터(_if->rsp)에 count(인자의 개수) 만큼의 데이터를 arg에 저장
- * int *arg (스택 메모리가 아닌 커널 영역)
- */
-void get_argument(uintptr_t *rsp, int *arg, int count)
-{
+	if (!is_user_vaddr(addr) || addr == NULL || pml4_get_page(t->pml4, addr)==NULL){
+		printf("잘못된 참조입니다!\n");
+		exit(-1);
+	}
 }

@@ -133,16 +133,17 @@ duplicate_pte(uint64_t *pte, void *va, void *aux)
 static void
 __do_fork(void *aux)
 {
-	struct intr_frame if_;
+	struct intr_frame *if_;
 	struct thread *parent = (struct thread *)aux;
 	struct thread *current = thread_current();
 	/* TODO: somehow pass the parent_if. (i.e. process_fork()'s if_) */
-	struct intr_frame *parent_if;
+	struct intr_frame *parent_if = &(parent->tf);
+	if_ = &(current->tf);
 	bool succ = true;
 
 	/* 1. Read the cpu context to local stack. */
 	memcpy(&if_, parent_if, sizeof(struct intr_frame));
-
+	
 	/* 2. Duplicate PT */
 	current->pml4 = pml4_create();
 	if (current->pml4 == NULL)
@@ -199,7 +200,7 @@ int process_exec(void *f_name)
 		parse[cnt] = token;
 		cnt++;
 	}
-
+	
 	/*
 	 * SEL_UDSEG : user data segment  SEL_UCSEG : useo code segment
 	 */
@@ -209,12 +210,10 @@ int process_exec(void *f_name)
 	_if.eflags = FLAG_IF | FLAG_MBS;	  //
 
 	/* We first kill the current context */
-	//
 	process_cleanup(); // current page의 pml4 초기화
 
 	/* And then load the binary */
 	success = load(file_name, &_if);
-
 	
 	argument_stack(parse, cnt, &_if.rsp);
 	_if.R.rdi = cnt;
@@ -262,13 +261,6 @@ void argument_stack(char **parse, int count, void **rsp)
 		**(char **)rsp = NULL;
 	}
 	*rsp += 1;
-
-	/* argv[argc] */
-	// for (int idx = 0; idx < WORD_ALIGN; idx++)
-	// {
-	// 	*rsp = *rsp - 1;
-	// 	**(char **)rsp = NULL;
-	// }
 
 	/* argv[argc] */
 	*rsp = *rsp - WORD_ALIGN;

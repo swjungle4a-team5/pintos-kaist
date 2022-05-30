@@ -1,4 +1,8 @@
 #include <syscall.h>
+
+/* 헤더 추가 ?? */
+// #include "../../include/lib/user/syscall.h"
+/* 헤더 추가 ?? */
 #include <stdint.h>
 #include "../syscall-nr.h"
 
