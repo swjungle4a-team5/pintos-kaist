@@ -220,6 +220,16 @@ tid_t thread_create(const char *name, int priority,
 	t->tf.cs = SEL_KCSEG;
 	t->tf.eflags = FLAG_IF;
 
+	/* project 2 - process hierarchical init */
+	struct thread *parent = (struct thread*)aux;
+
+	t->parent = parent;
+	t->is_load = false;
+	t->is_exit = false;
+	// sema_init(&t->sema_exit, 0);
+	// sema_init(&t->sema_load, 0);
+	list_push_back(&parent->child_list, &t->child_elem);
+	
 	/* Add to run queue. */
 	thread_unblock(t);
 
@@ -497,11 +507,14 @@ init_thread(struct thread *t, const char *name, int priority)
 	t->priority = priority;
 	t->magic = THREAD_MAGIC;
 
-	/* project 3 - Priority Donation init */
+	/* project 2 - process hierarchical */
+	list_init(&t->child_list);
+
+	/* project 1 - Priority Donation init */
 	t->init_priority = priority;
 	list_init(&t->donations);
 
-	/* project 2(optional) - advanced scheduler */
+	/* project 1 (optional) - advanced scheduler */
 	if (thread_mlfqs)
 	{
 		t->nice = NICE_DEFAULT;

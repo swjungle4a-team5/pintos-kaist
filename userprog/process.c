@@ -92,6 +92,31 @@ tid_t process_fork(const char *name, struct intr_frame *if_ UNUSED)
 						 PRI_DEFAULT, __do_fork, thread_current());
 }
 
+/* project 2 - process hierarchical */
+struct thread *get_child_process (int pid)
+{
+	/* 자식 리스트에 접근하여 프로세스 디스크립터 검색 */
+	/* 해당 pid가 존재하면 프로세스 디스크립터 반환 */
+	/* 리스트에 존재하지 않으면 NULL 리턴 */
+	struct thread *parent = thread_current();
+	struct list_elem *search = list_begin(&parent->child_list);
+
+	for(;search!=list_end(&parent->child_list); search=list_next(search)){
+		struct thread* child = list_entry(search, struct thread, child_elem);
+		if (child->tid == pid){
+			return child;
+		}
+	}
+	return NULL;
+}
+
+void remove_child_process(struct thread *cp)
+{
+	/* 자식 리스트에서 제거*/
+	/* 프로세스 디스크립터 메모리 해제 미구현 */
+	list_remove(&cp->child_elem);
+	palloc_free_page(cp);
+}
 #ifndef VM
 /* Duplicate the parent's address space by passing this function to the
  * pml4_for_each. This is only for the project 2. */

@@ -88,9 +88,22 @@ typedef int tid_t;
  * blocked state is on a semaphore wait list. */
 struct thread
 {
-	
+	/* project 2 - process hierarchical */
+	struct thread* parent;
+	struct list child_list;
+	struct list_elem child_elem;
 
-	
+	/* 프로세스의 프로그램 메모리 적재 유무 */
+	bool is_load;
+	/* 프로세스 종료 유무 확인 */
+	bool is_exit;
+
+	/* 선언이 안돼서 주석처리, thread_create에서 초기화도 주석처리. */
+	// struct semaphore sema_exit;
+	// struct semaphore sema_load;
+
+	int exit_status;
+	/* project 2 - process hierarchical */
 
 	/* Owned by thread.c. */
 	tid_t tid;				   /* Thread identifier. */

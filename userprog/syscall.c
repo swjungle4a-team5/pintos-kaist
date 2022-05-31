@@ -22,7 +22,8 @@ void halt(void);
 void exit (int status);
 bool create (const char *file, unsigned initial_size);
 bool remove (const char *file);
-pid_t fork(const char* thread_name, struct intr_frame *if_);
+// pid_t fork(const char* thread_name, struct intr_frame *if_);
+// int exec(const char* cmd_line);
 
 /* System call.
  *
@@ -76,11 +77,12 @@ void syscall_handler(struct intr_frame *f UNUSED)
 
 	/* Clone current process. */
 	case SYS_FORK:
-		f->R.rax = fork(f->R.rdi, f);
+		// f->R.rax = fork(f->R.rdi, f);
 		break;
 
 	/* Switch current process. */
 	case SYS_EXEC:
+		// f->R.rax = exec(f->R.rdi);
 		break;
 
 	/* Wait for a child process to die. */
@@ -138,7 +140,7 @@ void syscall_handler(struct intr_frame *f UNUSED)
 		break;
 	}
 
-	thread_exit();
+	//thread_exit();
 }
 
 void halt(void)
@@ -166,6 +168,7 @@ bool create (const char *file, unsigned initial_size)
 	printf("file create fail\n");
 	return false;
 }
+
 bool remove (const char *file)
 {
 	check_address(file);
@@ -176,13 +179,26 @@ bool remove (const char *file)
 	printf("file remove fail\n");
 	return false;
 }
-pid_t fork(const char* thread_name, struct intr_frame *if_)
-{
-	check_address(thread_name);
 
-	process_fork(thread_name, if_);
+// pid_t fork(const char* thread_name, struct intr_frame *if_)
+// {
+// 	check_address(thread_name);
 
-}
+// 	process_fork(thread_name, if_);
+
+// }
+
+// int exec(const char* cmd_line)
+// {
+// 	int status;
+// 	check_address(cmd_line);
+	
+// 	struct thread* curr = thread_current();
+// 	status = process_exec(cmd_line);
+// 	/* file descriptors들은 exec 호출 후에도 남아있다는 것을 기억해야 한다. */
+
+// 	return status;
+// }
 
 /* check_address()
  * 주소 값이 유저 영역에서 사용하는 주소 값((0x8048000~0xc0000000))인지 확인 하는 함수
@@ -196,52 +212,4 @@ void check_address(uintptr_t *addr)
 		printf("check_address~!!");
 		exit(-1);
 	}
-}
-
-/* get_argument()
- * 유저 스택에 있는 인자들을 커널에 저장하는 함수
- * 스택 포인터(_if->rsp)에 count(인자의 개수) 만큼의 데이터를 arg에 저장
- * int *arg (스택 메모리가 아닌 커널 영역)
- */
-// void get_argument(uintptr_t *rsp, int *arg, int count)
-// {
-// 	*arg = *rsp + 16;
-// 	for(int i=0; i<count; i++){
-// 		check_address(*arg);
-// 		*arg++;
-// 	}
-// 	check_address()
-
-// }
-
-void halt(void){
-	power_off();
-}
-
-void exit(int status){
-	struct  thread *t = thread_current();
-	printf("%s: exit(%d)\n", t->name, status);
-	thread_exit();
-}
-
-bool create(const char *file, unsigned initial_size){
-	check_address(file);
-	return filesys_create (file, initial_size);
-	// if(filesys_create (file, initial_size)){
-	// 	return true;
-	// }
-	// else{
-	// 	return false;
-	// }
-}
-
-bool remove(const char *file){
-	check_address(file);
-	return filesys_remove (file);
-	// if(filesys_remove (file)){
-	// 	return true;
-	// }
-	// else{
-	// 	return false;
-	// }
 }
