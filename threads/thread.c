@@ -220,6 +220,18 @@ tid_t thread_create(const char *name, int priority,
 	t->tf.cs = SEL_KCSEG;
 	t->tf.eflags = FLAG_IF;
 
+	/* project 2 - process hierarchical init */
+	// struct thread *parent = (struct thread*)aux;
+	// struct thread *curr = thread_current();
+	
+	// // t->parent = curr;
+	// t->is_load = false;
+	// t->is_exit = false;
+	// // sema_init(&t->sema_exit, 0);
+	// // sema_init(&t->sema_load, 0);
+	// // list_push_back(&parent->child_list, &t->child_elem);
+	// list_push_back(&curr->child_list, &t->child_elem);
+	
 	/* Add to run queue. */
 	thread_unblock(t);
 
@@ -496,6 +508,8 @@ init_thread(struct thread *t, const char *name, int priority)
 	t->tf.rsp = (uint64_t)t + PGSIZE - sizeof(void *);
 	t->priority = priority;
 	t->magic = THREAD_MAGIC;
+
+	// list_init(&t->child_list);
 
 	/* project 3 - Priority Donation init */
 	t->init_priority = priority;
