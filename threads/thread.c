@@ -221,14 +221,16 @@ tid_t thread_create(const char *name, int priority,
 	t->tf.eflags = FLAG_IF;
 
 	/* project 2 - process hierarchical init */
-	struct thread *parent = (struct thread*)aux;
-
-	t->parent = parent;
-	t->is_load = false;
-	t->is_exit = false;
-	// sema_init(&t->sema_exit, 0);
-	// sema_init(&t->sema_load, 0);
-	list_push_back(&parent->child_list, &t->child_elem);
+	/* palloc_get_mutiple : PAGE_CNT 만큼 연속으로 사용 가능한 페이지 그룹을 가져오고 리턴한다.
+	 * PAL_ZERO는 해당 페이지를 0으로 채운다. 사용 가능한 페이지가 너무 적은 경우 NULL 포인터를 리턴한다.
+	 */
+	t->file_descriptor_table = palloc_get_multiple(PAL_ZERO, FDT_PAGES);
+	if (t->file_descriptor_table == NULL){
+		return TID_ERROR;
+	}
+	t->fdidx = 2; // 0은 stdin, 1은 stdout에 이미 할당
+	t->file_descriptor_table[0] = 1; // stdin 자리 : 1 배정
+	t->file_descriptor_table[1] = 2; // stdout 자리 : 2 배정
 	
 	/* Add to run queue. */
 	thread_unblock(t);
@@ -508,7 +510,7 @@ init_thread(struct thread *t, const char *name, int priority)
 	t->magic = THREAD_MAGIC;
 
 	/* project 2 - process hierarchical */
-	list_init(&t->child_list);
+	t->exit_status = 0;
 
 	/* project 1 - Priority Donation init */
 	t->init_priority = priority;

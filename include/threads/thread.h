@@ -89,20 +89,9 @@ typedef int tid_t;
 struct thread
 {
 	/* project 2 - process hierarchical */
-	struct thread* parent;
-	struct list child_list;
-	struct list_elem child_elem;
-
-	/* 프로세스의 프로그램 메모리 적재 유무 */
-	bool is_load;
-	/* 프로세스 종료 유무 확인 */
-	bool is_exit;
-
-	/* 선언이 안돼서 주석처리, thread_create에서 초기화도 주석처리. */
-	// struct semaphore sema_exit;
-	// struct semaphore sema_load;
-
 	int exit_status;
+	struct file **file_descriptor_table;
+	int fdidx;
 	/* project 2 - process hierarchical */
 
 	/* Owned by thread.c. */
@@ -184,5 +173,11 @@ void mlfqs_recalc_recent_cpu(void);
 int thread_get_recent_cpu(void);
 
 void do_iret(struct intr_frame *tf);
+
+/* --- project 2: system call --- */
+
+#define FDT_PAGES 3
+/* fdt를 위한 페이지의 크기는 (1<<12)인데, 파일 구조체 주소 크기가 (1<<3) 이므로 (1<<9)만큼 할당받을 수 있다. */
+#define FDT_COUNT_LIMIT FDT_PAGES *(1<<9) // limit fdidx
 
 #endif /* threads/thread.h */

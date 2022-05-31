@@ -10,9 +10,8 @@
 #include "intrinsic.h"
 #include "threads/init.h"
 #include "filesys/filesys.h"
+#include <devices/input.h>
 
-
-/* 헤더 추가 ?? */
 
 void syscall_entry(void);
 void syscall_handler(struct intr_frame *);
@@ -22,8 +21,12 @@ void halt(void);
 void exit (int status);
 bool create (const char *file, unsigned initial_size);
 bool remove (const char *file);
+int write (int fd, const void *buffer, unsigned size);
+int open (const char *file);
 // pid_t fork(const char* thread_name, struct intr_frame *if_);
 // int exec(const char* cmd_line);
+
+int add_file_to_fd_table(struct file *file);
 
 /* System call.
  *
@@ -101,6 +104,7 @@ void syscall_handler(struct intr_frame *f UNUSED)
 
 	/* Open a file. */
 	case SYS_OPEN:
+		f->R.rax = open(f->R.rdi);
 		break;
 
 	/* Obtain a file's size. */
@@ -113,8 +117,7 @@ void syscall_handler(struct intr_frame *f UNUSED)
 
 	/* Write to a file. */
 	case SYS_WRITE:
-		// printf("10?!");
-		// rdi, rsi, rdx // fd, buffer, size
+		f->R.rax = write(f->R.rdi, f->R.rsi, f->R.rdx);
 		break;
 
 	/* Change position in a file. */
@@ -148,12 +151,11 @@ void halt(void)
 	power_off();
 }
 
+/* 현재 프로세스를 종료시키는 시스템 콜 */
 void exit (int status)
 {	
-	/* USERPROG일 때, thread_exit()는 prcoess_exit()를 호출 */
-	/* status 사용법은 ? */ 
-	/* 만약, 부모 프로세스가 wait중이라면, 해당 status가 반환된다. */
 	struct thread *t = thread_current();
+	t->exit_status = status;
 	printf("name:%s exit_status:%d", t->name, status);
 	thread_exit();
 }
@@ -178,6 +180,30 @@ bool remove (const char *file)
 	}
 	printf("file remove fail\n");
 	return false;
+}
+
+int write (int fd, const void *buffer, unsigned size)
+{
+	if (fd == STDOUT_FILENO)
+		putbuf(buffer, size);
+	return size;
+}
+
+int open (const char *file)
+{
+	check_address(file);
+	// 파일이 잘 열렸으면 새 파일 객체를 리턴하고, 그렇지않다면 NULL을 리턴
+	// 만약, 존재하지 않는 파일이라면 -1을 리턴한다.
+	struct file *file_obj = filesys_open(file);
+
+	if (file_obj == NULL)
+		return -1;
+	// 만들어진 파일을 스레드 내 fdt 테이블 추가
+	int fd = add_file_to_fd_table(file_obj);
+	
+	if (fd == -1)
+		file_close(file_obj);
+	return fd;
 }
 
 // pid_t fork(const char* thread_name, struct intr_frame *if_)
@@ -212,4 +238,23 @@ void check_address(uintptr_t *addr)
 		printf("check_address~!!");
 		exit(-1);
 	}
+}
+
+/* 파일을 현재 프로세스의 fdt에 추가 */
+int add_file_to_fd_table(struct file *file)
+{
+	struct thread *t = thread_current();
+	struct file **fdt = t->file_descriptor_table;
+	int fd = t->fdidx;
+
+	while (t->file_descriptor_table[fd]!=NULL && fd<FDT_COUNT_LIMIT){
+		fd++;
+	}
+
+	if (fd >= FDT_COUNT_LIMIT){
+		return -1;
+	}
+	t->fdidx = fd;
+	fdt[fd] = file;
+	return fd;
 }
