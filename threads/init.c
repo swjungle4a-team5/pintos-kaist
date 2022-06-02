@@ -67,15 +67,18 @@ int main (void) NO_RETURN;
 /* Pintos main program. */
 int
 main (void) {
+  	printf("##### ##### threads/init.c main() start ----- \n");
 	uint64_t mem_end;
 	char **argv;
 
 	/* Clear BSS and get machine's RAM size. */
-	bss_init ();
+	bss_init ();					// bss 세그먼트 0으로 초기화
 
 	/* Break command line into arguments and parse options. */
-	argv = read_command_line ();
-	argv = parse_options (argv);
+	argv = read_command_line ();	// command_line을 읽고 argv를 잘라줌
+									// -q -f put args-single run 'args-single oneargs' 만 남김
+	argv = parse_options (argv);	// 옵션 파싱해서 해당되는 변수(flag같은 기능)를 true로 바꿔줌
+									// (e.g. mlfq, thread_tests)
 
 	/* Initialize ourselves as a thread so we can use locks,
 	   then enable console locking. */
@@ -83,13 +86,13 @@ main (void) {
 	console_init ();
 
 	/* Initialize memory system. */
-	mem_end = palloc_init ();
+	mem_end = palloc_init ();		// page allocator를 초기화하고 초기 메모리 사이즈를 반환함
 	malloc_init ();
-	paging_init (mem_end);
+	paging_init (mem_end);			// page table을 커널가상매핑으로 채우고(?) 새 페이지 디렉터리를 사용하도록 cpu 세팅, pml4_activate
 
 #ifdef USERPROG
-	tss_init ();
-	gdt_init ();
+	tss_init ();					// tss를 위한 페이지를 할당하고 0으로 초기화, tss->rsp0에 커널 스택 포인터 저장
+	gdt_init ();					// global descriptor table 초기화
 #endif
 
 	/* Initialize interrupt handlers. */
@@ -102,7 +105,7 @@ main (void) {
 	syscall_init ();
 #endif
 	/* Start thread scheduler and enable interrupts. */
-	thread_start ();
+	thread_start ();				// idle 스레드 생성
 	serial_init_queue ();
 	timer_calibrate ();
 
@@ -137,21 +140,26 @@ bss_init (void) {
 	   The start and end of the BSS segment is recorded by the
 	   linker as _start_bss and _end_bss.  See kernel.lds. */
 	extern char _start_bss, _end_bss;
-	memset (&_start_bss, 0, &_end_bss - &_start_bss);
+	memset (&_start_bss, 0, &_end_bss - &_start_bss);		// 0으로 초기화
 }
 
 /* Populates the page table with the kernel virtual mapping,
  * and then sets up the CPU to use the new page directory.
- * Points base_pml4 to the pml4 it creates. */
+ * Points base_pml4 to the pml4 it creates.
+ * 페이지 테이블을 커널 가상 매핑으로 채우고, 
+ * 새 페이지 디렉터리를 사용하도록 cpu 세팅
+ * base_pml4는 생성되는 pml4를 가리킴??(해석필요) */
 static void
 paging_init (uint64_t mem_end) {
 	uint64_t *pml4, *pte;
 	int perm;
 	pml4 = base_pml4 = palloc_get_page (PAL_ASSERT | PAL_ZERO);
-
+	// free page 하나를 할당받고 가상주소를 반환
 	extern char start, _end_kernel_text;
 	// Maps physical address [0 ~ mem_end] to
 	//   [LOADER_KERN_BASE ~ LOADER_KERN_BASE + mem_end].
+	// 물리주소를 가상주소로 변환
+	// LOADER_KERN_BASE : 커널의 가상주소 0이자 물리주소 0
 	for (uint64_t pa = 0; pa < mem_end; pa += PGSIZE) {
 		uint64_t va = (uint64_t) ptov(pa);
 
@@ -164,7 +172,7 @@ paging_init (uint64_t mem_end) {
 	}
 
 	// reload cr3
-	pml4_activate(0);
+	pml4_activate(0);		// 페이지 디렉토리 pd를 cpu의 page directory base register에 저장
 }
 
 /* Breaks the kernel command line into words and returns them as
@@ -237,14 +245,14 @@ parse_options (char **argv) {
 /* Runs the task specified in ARGV[1]. */
 static void
 run_task (char **argv) {
-	const char *task = argv[1];
+	const char *task = argv[1];		// [0]:run [1]:'args-single onearg\n'
 
 	printf ("Executing '%s':\n", task);
 #ifdef USERPROG
 	if (thread_tests){
 		run_test (task);
 	} else {
-		process_wait (process_create_initd (task));
+		process_wait (process_create_initd (task));	// process_create_initd() 해놓고 값 받으면 wait로 들어감
 	}
 #else
 	run_test (task);
@@ -255,7 +263,7 @@ run_task (char **argv) {
 /* Executes all of the actions specified in ARGV[]
    up to the null pointer sentinel. */
 static void
-run_actions (char **argv) {
+run_actions (char **argv) {			// argv : run 'args-single oneargs'
 	/* An action. */
 	struct action {
 		char *name;                       /* Action name. */
@@ -265,7 +273,7 @@ run_actions (char **argv) {
 
 	/* Table of supported actions. */
 	static const struct action actions[] = {
-		{"run", 2, run_task},
+		{"run", 2, run_task},		// name : run, argc : 2, function : run_task 인 action 구조체
 #ifdef FILESYS
 		{"ls", 1, fsutil_ls},
 		{"cat", 2, fsutil_cat},
@@ -281,19 +289,19 @@ run_actions (char **argv) {
 		int i;
 
 		/* Find action name. */
-		for (a = actions; ; a++)
-			if (a->name == NULL)
+		for (a = actions; ; a++)				// actions 배열을 돌면서
+			if (a->name == NULL)				// 이름이 NULL이면 PANIC
 				PANIC ("unknown action `%s' (use -h for help)", *argv);
-			else if (!strcmp (*argv, a->name))
+			else if (!strcmp (*argv, a->name))	// argv(지금은 run)와 이름이 같으면 break
 				break;
 
 		/* Check for required arguments. */
-		for (i = 1; i < a->argc; i++)
+		for (i = 1; i < a->argc; i++)			// argc만큼 돌면서 값이 제대로 들어있는지 확인
 			if (argv[i] == NULL)
 				PANIC ("action `%s' requires %d argument(s)", *argv, a->argc - 1);
 
 		/* Invoke action and advance. */
-		a->function (argv);
+		a->function (argv);						// run_task(argv) 호출
 		argv += a->argc;
 	}
 

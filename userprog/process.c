@@ -41,18 +41,18 @@ process_init(void)
  * before process_create_initd() returns. Returns the initd's
  * thread id, or TID_ERROR if the thread cannot be created.
  * Notice that THIS SHOULD BE CALLED ONCE. */
-tid_t process_create_initd(const char *file_name)
+tid_t process_create_initd(const char *file_name)	// 'args-single onearg'
 {
-	char *fn_copy; // strtok_r 함수는 원본을 변경하는 risk가 있음
+	char *fn_copy; 					
 	tid_t tid;
 	char *next_ptr;
 
 	/* Make a copy of FILE_NAME.
 	 * Otherwise there's a race between the caller and load(). */
-	fn_copy = palloc_get_page(0);
+	fn_copy = palloc_get_page(0);			// file_name을 저장하기 위한 할당
 	if (fn_copy == NULL)
 		return TID_ERROR;
-	strlcpy(fn_copy, file_name, PGSIZE);
+	strlcpy(fn_copy, file_name, PGSIZE);	// file_name을 fn_copy에 PGSIZE만큼 복사
 
 	/* strtok_r(file_name, delimiters, ptr)
 	 * 문자열을 delimiter 단위로 자름
@@ -62,6 +62,7 @@ tid_t process_create_initd(const char *file_name)
 
 	/* Create a new thread to execute FILE_NAME. */
 	tid = thread_create(file_name, PRI_DEFAULT, initd, fn_copy); // 파일 이름 첫번째 인자(단어)를 thread 이름으로 저장
+																 // 스레드 생성 후 initd(fn_copy) 실행
 	if (tid == TID_ERROR)
 		palloc_free_page(fn_copy);
 	return tid;
@@ -204,13 +205,13 @@ int process_exec(void *f_name)
 	 * SEL_UDSEG : user data segment  SEL_UCSEG : useo code segment
 	 */
 	struct intr_frame _if;
-	_if.cs = SEL_UCSEG;					  // code segment
-	_if.ds = _if.es = _if.ss = SEL_UDSEG; // data segment
-	_if.eflags = FLAG_IF | FLAG_MBS;	  //
+	_if.cs = SEL_UCSEG;					  // code selector
+	_if.ds = _if.es = _if.ss = SEL_UDSEG; // data selector
+	_if.eflags = FLAG_IF | FLAG_MBS;	  // Interrupt Flag, Parity Flag 
 
 	/* We first kill the current context */
 	//
-	process_cleanup(); // current page의 pml4 초기화
+	process_cleanup(); // current page의 pml4 초기화 // 더 찾아보기
 
 	/* And then load the binary */
 	success = load(file_name, &_if);
@@ -220,7 +221,7 @@ int process_exec(void *f_name)
 	_if.R.rdi = cnt;
 	_if.R.rsi = _if.rsp + WORD_ALIGN;
 	
-	hex_dump(_if.rsp, _if.rsp, USER_STACK - _if.rsp, true);
+	// hex_dump(_if.rsp, _if.rsp, USER_STACK - _if.rsp, true);
 
 	/* ------------ Argument Passing ------------*/
 
@@ -300,8 +301,7 @@ int process_wait(tid_t child_tid UNUSED)
 	/* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
 	 * XXX:       to add infinite loop here before
 	 * XXX:       implementing the process_wait. */
-	while (1)
-		;
+	while (1);
 	return -1;
 }
 
@@ -342,8 +342,8 @@ process_cleanup(void)
 		 * directory, or our active page directory will be one
 		 * that's been freed (and cleared). */
 		curr->pml4 = NULL;
-		pml4_activate(NULL);
-		pml4_destroy(pml4);
+		pml4_activate(NULL);	// NULL -> base_pml4
+		pml4_destroy(pml4);		// 페이지 관련 참조들을 반환함
 	}
 }
 
@@ -355,7 +355,7 @@ void process_activate(struct thread *next)
 	pml4_activate(next->pml4);
 
 	/* Set thread's kernel stack for use in processing interrupts. */
-	tss_update(next);
+	tss_update(next); // tss->rsp0 = thread + PGSIZE(1<<12)
 }
 
 /* We load ELF binaries.  The following definitions are taken
@@ -432,7 +432,7 @@ load(const char *file_name, struct intr_frame *if_)
 	struct file *file = NULL;
 	off_t file_ofs;
 	bool success = false;
-	int i;
+	int i = 0;
 
 	//    /* parsing file name and arguments */
 	//    char *parse[128];
@@ -446,7 +446,7 @@ load(const char *file_name, struct intr_frame *if_)
 	//    }
 
 	/* Allocate and activate page directory. */
-	t->pml4 = pml4_create();
+	t->pml4 = pml4_create();	
 	if (t->pml4 == NULL)
 		goto done;
 	process_activate(thread_current());
@@ -662,6 +662,7 @@ load_segment(struct file *file, off_t ofs, uint8_t *upage,
 }
 
 /* Create a minimal stack by mapping a zeroed page at the USER_STACK */
+/* USER_STACK에서 0으로 설정된 페이지를 매핑하여 최소 스택 생성 */
 static bool
 setup_stack(struct intr_frame *if_)
 {
@@ -690,6 +691,12 @@ setup_stack(struct intr_frame *if_)
  * with palloc_get_page().
  * Returns true on success, false if UPAGE is already mapped or
  * if memory allocation fails. */
+/* 사용자 가상 주소 UPAGE에서 커널 가상 주소 KPAGE로의 매핑을 페이지 테이블에 추가함
+ * writable이 true이면 user process가 페이지를 수정가능
+ * 어나면 읽기 전용
+ * UPAGE가 이미 매핑되어 있지 않아야 함
+ * KPAGE는 palloc_get_page()를 통해 USER pool에서 가져온 페이지여야 함
+ * 성공 시 true를 반환하고, UPAGE가 이미 매핑되어 있거나 메모리 할당이 실패하면 false를 반환 */
 static bool
 install_page(void *upage, void *kpage, bool writable)
 {
@@ -697,6 +704,7 @@ install_page(void *upage, void *kpage, bool writable)
 
 	/* Verify that there's not already a page at that virtual
 	 * address, then map our page there. */
+	/* 해당 가상 주소에 페이지가 아직 없는지 확인한 후 해당 페이지에 매핑 */
 	return (pml4_get_page(t->pml4, upage) == NULL && pml4_set_page(t->pml4, upage, kpage, writable));
 }
 #else

@@ -14,7 +14,10 @@ static __inline int64_t syscall (uint64_t num_, uint64_t a1_, uint64_t a2_,
 	register uint64_t *a5 asm ("r8") = (uint64_t *) a5_;
 	register uint64_t *a6 asm ("r9") = (uint64_t *) a6_;
 
-	__asm __volatile(
+/* 컴파일러가 최적화하고 수행하는 과정에서 
+	instruction의 순서가 바뀔 수 있는데, 
+	volatile을 사용함으로써 순서 보장 */
+	__asm __volatile(	
 			"mov %1, %%rax\n"
 			"mov %2, %%rdi\n"
 			"mov %3, %%rsi\n"
@@ -22,10 +25,11 @@ static __inline int64_t syscall (uint64_t num_, uint64_t a1_, uint64_t a2_,
 			"mov %5, %%r10\n"
 			"mov %6, %%r8\n"
 			"mov %7, %%r9\n"
-			"syscall\n"
+			"syscall\n"	
 			: "=a" (ret)
 			: "g" (num), "g" (a1), "g" (a2), "g" (a3), "g" (a4), "g" (a5), "g" (a6)
-			: "cc", "memory");
+			: "cc", "memory");	// condition code , memory ; 
+			// 실행할 어셈블리어 : 출력 : 입력 : 어셈블리 코드를 실행함으로써 변화가 발생하는 곳
 	return ret;
 }
 
@@ -97,6 +101,7 @@ wait (pid_t pid) {
 
 bool
 create (const char *file, unsigned initial_size) {
+	printf("##### ##### user/syscall.c create() start \n");
 	return syscall2 (SYS_CREATE, file, initial_size);
 }
 
