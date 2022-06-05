@@ -43,10 +43,15 @@
    thread, if any). */
 void sema_init(struct semaphore *sema, unsigned value)
 {
+	// 여기도 안됨
+	// printf("\n##### debuging ##### start sema_init \n ");
+
 	ASSERT(sema != NULL);
 
 	sema->value = value;
 	list_init(&sema->waiters);
+	// 여기도 안됨
+	// printf("\n##### debuging ##### end sema_init \n ");
 }
 
 /* Down or "P" operation on a semaphore.  Waits for SEMA's value
@@ -59,6 +64,7 @@ void sema_init(struct semaphore *sema, unsigned value)
    sema_down function. */
 void sema_down(struct semaphore *sema)
 {
+	// printf("\n##### debuging ##### start sema_down \n ");
 
 	/* Project2 - Priority Scheduling
 	 * semaphore를 얻고 waiters 리스트 삽입 시, 우선순위대로 삽입되도록 수정
@@ -71,9 +77,13 @@ void sema_down(struct semaphore *sema)
 	old_level = intr_disable();
 	while (sema->value == 0)
 	{
+		// printf("\n##### debuging ##### in while \n ");
 		list_insert_ordered(&sema->waiters, &thread_current()->elem, cmp_priority, NULL);
 		thread_block();
+		// printf("\n##### debuging ##### after block \n ");
 	}
+	// printf("\n##### debuging ##### after while \n ");
+
 	sema->value--;
 	intr_set_level(old_level);
 }
@@ -182,10 +192,15 @@ sema_test_helper(void *sema_)
    instead of a lock. */
 void lock_init(struct lock *lock)
 {
+	// 여기서 printf 쓰면 안됨 왜?????
+	// printf("\n##### debuging ##### start lock_init \n ");
 	ASSERT(lock != NULL);
 
 	lock->holder = NULL;
 	sema_init(&lock->semaphore, 1);
+	
+	// 여기도 안됨
+	// printf("\n##### debuging ##### end lock_init \n ");
 }
 
 /* Acquires LOCK, sleeping until it becomes available if
@@ -198,6 +213,8 @@ void lock_init(struct lock *lock)
    we need to sleep. */
 void lock_acquire(struct lock *lock)
 {
+	// printf("\n##### debuging ##### start lock_acquire \n ");
+
 	/*
 	 * project 3 - Priority Donation
 	 * lock을 점유하고 있는 스레드와 요청 하는 스레드의 우선순위를 비교하여
@@ -209,6 +226,7 @@ void lock_acquire(struct lock *lock)
 
 		if (lock->holder != NULL)
 		{
+			// printf("\n##### debuging ##### in lock holder : %s\n ", lock->holder->name);
 			t->wait_on_lock = lock;
 
 			if (lock->holder->priority < t->priority)

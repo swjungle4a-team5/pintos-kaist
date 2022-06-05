@@ -128,6 +128,7 @@ intr_get_level (void) {
    returns the previous interrupt status. */
 enum intr_level
 intr_set_level (enum intr_level level) {
+	// printf("\n##### debuging ##### start intr_set_level \n ");
 	return level == INTR_ON ? intr_enable () : intr_disable ();
 }
 
@@ -265,6 +266,8 @@ intr_context (void) {
    time. */
 void
 intr_yield_on_return (void) {
+	// printf("\n##### debuging ##### start intr_yield_on_return \n ");
+
 	ASSERT (intr_context ());
 	yield_on_return = true;
 }

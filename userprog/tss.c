@@ -69,6 +69,8 @@ tss_get (void) {
  * of the thread stack. */
 void
 tss_update (struct thread *next) {
+	// printf("\n##### debuging ##### start tss_update \n ");
+
 	ASSERT (tss != NULL);
 	tss->rsp0 = (uint64_t) next + PGSIZE;
 }

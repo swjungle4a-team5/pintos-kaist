@@ -18,6 +18,7 @@
 #include "threads/mmu.h"
 #include "threads/vaddr.h"
 #include "intrinsic.h"
+#include "userprog/process.h"
 #ifdef VM
 #include "vm/vm.h"
 #endif
@@ -178,7 +179,7 @@ error:
  * Returns -1 on fail. */
 int process_exec(void *f_name)
 {
-	//    printf("\n##### debuging ##### start process_exec \n f_name : %s \n\n", f_name);
+	// printf("\n##### debuging ##### start process_exec \n f_name : %s \n\n", f_name);
 	char *file_name = f_name;
 	bool success;
 
@@ -215,19 +216,21 @@ int process_exec(void *f_name)
 
 	/* And then load the binary */
 	success = load(file_name, &_if);
-
 	
+	// printf("\n##### debuging ##### after load \n ");
+		
 	argument_stack(parse, cnt, &_if.rsp);
 	_if.R.rdi = cnt;
 	_if.R.rsi = _if.rsp + WORD_ALIGN;
+	// printf("\n##### debuging ##### after argument stack \n ");
 	
 	// hex_dump(_if.rsp, _if.rsp, USER_STACK - _if.rsp, true);
 
 	/* ------------ Argument Passing ------------*/
 
 	/* If load failed, quit. */
-	palloc_free_page(file_name);
 	if (!success)
+		palloc_free_page(file_name);
 		return -1;
 
 	/* Start switched process. */
@@ -237,6 +240,7 @@ int process_exec(void *f_name)
 
 void argument_stack(char **parse, int count, void **rsp)
 {
+	// printf("\n##### debuging ##### start argument stack \n ");
 	int i, j;
 	void *addr_argv[count];
 
@@ -301,7 +305,10 @@ int process_wait(tid_t child_tid UNUSED)
 	/* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
 	 * XXX:       to add infinite loop here before
 	 * XXX:       implementing the process_wait. */
-	while (1);
+	// while (1);
+	for (int i = 0; i < 10000000000; i++){}
+	// timer_sleep(10);
+
 	return -1;
 }
 
@@ -314,14 +321,26 @@ void process_exit(void)
 	 * TODO: project2/process_termination.html).
 	 * TODO: We recommend you to implement process resource cleanup here. */
 
+	for(int i=0; i<FDCOUNT_LIMIT; i++){
+		close(i);
+	}
+	palloc_free_multiple(curr->fdTable, FDT_PAGES);
+	// file_close(curr->running);
 	process_cleanup();
+
+	// /* 부모 프로세스가 자식 프로세스의 종료상태 확인하게 함 */
+	// sema_up(&curr->wait_sema);
+
+	// /* 부모 프로세스가 자식 프로세스 종료인자 받을때 까지 대기 */
+	// sema_down(&curr->free_sema);
 }
 
 /* Free the current process's resources. */
 static void
 process_cleanup(void)
 {
-	//    printf("\n##### debuging ##### start process_cleanup \n\n");
+	// printf("\n##### debuging ##### start process_cleanup \n");
+	
 	struct thread *curr = thread_current();
 
 #ifdef VM
@@ -351,6 +370,8 @@ process_cleanup(void)
  * This function is called on every context switch. */
 void process_activate(struct thread *next)
 {
+	// printf("\n##### debuging ##### start process_activate \n next : %s \n\n", next->name);
+	
 	/* Activate thread's page tables. */
 	pml4_activate(next->pml4);
 
@@ -543,7 +564,7 @@ load(const char *file_name, struct intr_frame *if_)
 
 done:
 	/* We arrive here whether the load is successful or not. */
-	file_close(file);
+	// file_close(file);
 	return success;
 }
 
@@ -666,6 +687,7 @@ load_segment(struct file *file, off_t ofs, uint8_t *upage,
 static bool
 setup_stack(struct intr_frame *if_)
 {
+	// printf("\n##### debuging ##### start setup_stack \n ");
 	uint8_t *kpage;
 	bool success = false;
 

@@ -109,6 +109,8 @@ static uint64_t gdt[3] = {0, 0x00af9a000000ffff, 0x00cf92000000ffff};
    finishes. */
 void thread_init(void)
 {
+	// printf("\n##### debuging ##### start thread_init \n ");
+
 	ASSERT(intr_get_level() == INTR_OFF);
 
 	/* Reload the temporal gdt for the kernel
@@ -135,7 +137,9 @@ void thread_init(void)
 /* Starts preemptive thread scheduling by enabling interrupts.
    Also creates the idle thread. */
 void thread_start(void)
-{
+{	
+	// printf("\n##### debuging ##### start thread_start \n ");
+
 	/* Create the idle thread. */
 	struct semaphore idle_started;
 	sema_init(&idle_started, 0);
@@ -153,8 +157,10 @@ void thread_start(void)
    Thus, this function runs in an external interrupt context. */
 void thread_tick(void)
 {
-	struct thread *t = thread_current();
+	// printf("\n##### debuging ##### start thread_tick \n ");
 
+	struct thread *t = thread_current();
+	// printf("\nthread tick\n");
 	/* Update statistics. */
 	if (t == idle_thread)
 		idle_ticks++;
@@ -195,6 +201,8 @@ void thread_print_stats(void)
 tid_t thread_create(const char *name, int priority,
 					thread_func *function, void *aux)
 {
+	// printf("\n##### debuging ##### start thread_create name : %s \n ", name);
+
 	struct thread *t;
 	tid_t tid;
 
@@ -208,6 +216,15 @@ tid_t thread_create(const char *name, int priority,
 	/* Initialize thread. */
 	init_thread(t, name, priority);
 	tid = t->tid = allocate_tid();
+
+	/* project2 - user programs */
+	t->fdTable = palloc_get_multiple(PAL_ZERO, FDT_PAGES);
+	if(t->fdTable == NULL){
+		return TID_ERROR;
+	}
+	t->fdIdx = 2;
+	t->fdTable[0] = 1;
+	t->fdTable[1] = 2;
 
 	/* Call the kernel_thread if it scheduled.
 	 * Note) rdi is 1st argument, and rsi is 2nd argument. */
@@ -237,12 +254,17 @@ tid_t thread_create(const char *name, int priority,
    is usually a better idea to use one of the synchronization
    primitives in synch.h. */
 void thread_block(void)
-{
+{	
+	// printf("\n##### debuging ##### start thread_block \n ");
+
 	ASSERT(!intr_context());
 	ASSERT(intr_get_level() == INTR_OFF);
 	thread_current()->status = THREAD_BLOCKED;
+	// printf("\n##### debuging ##### in block \n ");
+
 	schedule();
 }
+// exit()
 
 /* Transitions a blocked thread T to the ready-to-run state.
    This is an error if T is not blocked.  (Use thread_yield() to
@@ -253,7 +275,9 @@ void thread_block(void)
    it may expect that it can atomically unblock a thread and
    update other data. */
 void thread_unblock(struct thread *t)
-{
+{	
+	// printf("\n##### debuging ##### start thread_unblock name : %s \n ", t->name);
+
 	enum intr_level old_level;
 
 	ASSERT(is_thread(t));
@@ -288,8 +312,12 @@ thread_current(void)
 	   have overflowed its stack.  Each thread has less than 4 kB
 	   of stack, so a few big automatic arrays or moderate
 	   recursion can cause stack overflow. */
+
+	// printf("\n##### debuging ##### in thread_current1  name : %s \n ", t->name);
 	ASSERT(is_thread(t));
+	// printf("\n##### debuging ##### in thread_current2  name : %s \n ", t->name);
 	ASSERT(t->status == THREAD_RUNNING);
+	// printf("\n##### debuging ##### in thread_current3  name : %s \n ", t->name);
 
 	return t;
 }
@@ -321,6 +349,7 @@ void thread_exit(void)
    may be scheduled again immediately at the scheduler's whim. */
 void thread_yield(void)
 {
+	// printf("\n##### debuging ##### start thread_yield \n ");
 	struct thread *curr = thread_current();
 	enum intr_level old_level;
 
@@ -440,6 +469,8 @@ int thread_get_recent_cpu(void)
 static void
 idle(void *idle_started_ UNUSED)
 {
+	// printf("\n##### debuging ##### start idle \n ");
+
 	struct semaphore *idle_started = idle_started_;
 
 	idle_thread = thread_current();
@@ -485,7 +516,9 @@ kernel_thread(thread_func *function, void *aux)
    NAME. */
 static void
 init_thread(struct thread *t, const char *name, int priority)
-{
+{	
+	// printf("\n##### debuging ##### start init_thread   name : %s \n ", name);
+
 	ASSERT(t != NULL);
 	ASSERT(PRI_MIN <= priority && priority <= PRI_MAX);
 	ASSERT(name != NULL);
@@ -497,16 +530,26 @@ init_thread(struct thread *t, const char *name, int priority)
 	t->priority = priority;
 	t->magic = THREAD_MAGIC;
 
-	/* project 3 - Priority Donation init */
+	/* project - Priority Donation init */
 	t->init_priority = priority;
 	list_init(&t->donations);
 
-	/* project 2(optional) - advanced scheduler */
+	/* project - advanced scheduler */
 	if (thread_mlfqs)
 	{
 		t->nice = NICE_DEFAULT;
 		t->recent_cpu = RECENT_CPU_DEFAULT;
 	}
+
+	/* 자식 리스트 및 세마포어 초기화 */
+	/* project - user programs */
+	t->exit_status = 0;	
+	list_init(&t->child_list);
+	sema_init(&t->wait_sema, 0);
+	sema_init(&t->fork_sema, 0);
+	sema_init(&t->free_sema, 0);
+
+	t->running = NULL;
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should
@@ -645,7 +688,9 @@ do_schedule(int status)
 
 static void
 schedule(void)
-{
+{	
+	// printf("\n##### debuging ##### start schedule \n ");
+
 	struct thread *curr = running_thread();
 	struct thread *next = next_thread_to_run();
 
@@ -687,13 +732,17 @@ schedule(void)
 /* Returns a tid to use for a new thread. */
 static tid_t
 allocate_tid(void)
-{
+{	
+	// printf("\n##### debuging ##### start allocate_tid \n ");
+
 	static tid_t next_tid = 1;
 	tid_t tid;
 
 	lock_acquire(&tid_lock);
+	// printf("\n##### debuging ##### after acquire \n ");
 	tid = next_tid++;
 	lock_release(&tid_lock);
+	// printf("\n##### debuging ##### after release \n ");
 
 	return tid;
 }
@@ -710,6 +759,7 @@ void thread_sleep(int64_t ticks)
 	if (t != idle_thread)
 	{
 		t->wakeup_tick = ticks;					 // 일어날 시간 설정
+		update_next_tick_to_awake(ticks); // d
 		list_push_back(&sleep_list, &(t->elem)); // sleep_list 맨뒤에
 		thread_block();							 // 실행중인 스레드 block
 	}
@@ -725,9 +775,10 @@ void thread_sleep(int64_t ticks)
 /* sleep queue에서 깨워야 할 스레드를 찾아서 wake up */
 void thread_awake(int64_t ticks)
 {
+	next_tick_to_awake = INT64_MAX; // d
 	struct thread *t;
 	struct list_elem *tmp = list_begin(&sleep_list); // sleep list의 첫번째 원소
-	int64_t min_wake = INT64_MAX;
+	// int64_t min_wake = INT64_MAX; // d
 	for (tmp; tmp != list_end(&sleep_list); tmp = list_next(tmp))
 	{
 		t = list_entry(tmp, struct thread, elem);
@@ -740,14 +791,15 @@ void thread_awake(int64_t ticks)
 		}
 		else
 		{
-			if (t->wakeup_tick < min_wake)
-			{
-				min_wake = t->wakeup_tick;
-			}
+			update_next_tick_to_awake(t->wakeup_tick); // d
+			// if (t->wakeup_tick < min_wake)	// d
+			// {
+			// 	min_wake = t->wakeup_tick;
+			// }
 		}
 	}
-	if (min_wake != INT64_MAX)
-		update_next_tick_to_awake(min_wake);
+	// if (min_wake != INT64_MAX)	//d
+	// 	update_next_tick_to_awake(min_wake);
 
 	// wakeup_tick값(스레드가 일어날 시간)이 인자로 들어온 ticks값()
 	// 현재 대기중인 스레드들의 wakeup_tick 변수 중 가장 작은 값을
@@ -757,7 +809,8 @@ void thread_awake(int64_t ticks)
 /* 스레드들이 가진 tick값에서 최소값을 저장 - 가장 빨리 일어날 스레드 */
 void update_next_tick_to_awake(int64_t ticks)
 {
-	next_tick_to_awake = ticks;
+	// next_tick_to_awake = ticks; // d
+	next_tick_to_awake = (ticks < next_tick_to_awake) ? ticks : next_tick_to_awake; // d
 }
 
 /* 최소 tick값을 반환 */
@@ -769,6 +822,7 @@ int64_t get_next_tick_to_awake(void)
 /* 현재 수행중인 스레드와 가장높은 순위의 스레드를 비교해서 스케줄링 → 선점 판단 */
 void test_max_priority(void)
 {
+	// printf("\n##### debuging ##### start test_max_priority \n ");
 	int curr_pri = thread_get_priority();
 	struct thread *ready_thread = list_entry(list_begin(&ready_list), struct thread, elem);
 

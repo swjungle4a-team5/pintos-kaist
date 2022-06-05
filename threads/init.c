@@ -67,47 +67,68 @@ int main (void) NO_RETURN;
 /* Pintos main program. */
 int
 main (void) {
-  	printf("##### ##### threads/init.c main() start ----- \n");
+  	// write(1, "##### ##### threads/init.c main() start ----- \n", 48);
+  	// printf("##### ##### threads/init.c main() start ----- \n");
 	uint64_t mem_end;
 	char **argv;
 
 	/* Clear BSS and get machine's RAM size. */
 	bss_init ();					// bss 세그먼트 0으로 초기화
+	// printf("##### I am main() \n");
 
 	/* Break command line into arguments and parse options. */
 	argv = read_command_line ();	// command_line을 읽고 argv를 잘라줌
 									// -q -f put args-single run 'args-single oneargs' 만 남김
+	// printf("##### I am main() \n");
 	argv = parse_options (argv);	// 옵션 파싱해서 해당되는 변수(flag같은 기능)를 true로 바꿔줌
 									// (e.g. mlfq, thread_tests)
+	// printf("##### I am main() \n");
 
 	/* Initialize ourselves as a thread so we can use locks,
 	   then enable console locking. */
 	thread_init ();
+	// printf("##### I am main() \n");
 	console_init ();
+	// printf("##### I am main() \n");				// no
 
 	/* Initialize memory system. */
-	mem_end = palloc_init ();		// page allocator를 초기화하고 초기 메모리 사이즈를 반환함
+	mem_end = palloc_init ();
+	// printf("##### I am main() \n");		// no, page allocator를 초기화하고 초기 메모리 사이즈를 반환함
 	malloc_init ();
-	paging_init (mem_end);			// page table을 커널가상매핑으로 채우고(?) 새 페이지 디렉터리를 사용하도록 cpu 세팅, pml4_activate
+	// printf("##### I am main() \n");					// no
+	paging_init (mem_end);
+	// printf("##### I am main() \n");			// no, page table을 커널가상매핑으로 채우고(?) 새 페이지 디렉터리를 사용하도록 cpu 세팅, pml4_activate
+	// write(1, "##### I am main() \n", 30);
 
 #ifdef USERPROG
-	tss_init ();					// tss를 위한 페이지를 할당하고 0으로 초기화, tss->rsp0에 커널 스택 포인터 저장
-	gdt_init ();					// global descriptor table 초기화
+	tss_init ();
+	// printf("##### I am main() \n");					// yes, tss를 위한 페이지를 할당하고 0으로 초기화, tss->rsp0에 커널 스택 포인터 저장
+	gdt_init ();
+	// printf("##### I am main() \n");					// no, global descriptor table 초기화
 #endif
 
 	/* Initialize interrupt handlers. */
 	intr_init ();
+	// printf("##### I am main() \n");					// no
 	timer_init ();
+	// printf("##### I am main() \n");					// yes, timer_interrupt 
 	kbd_init ();
+	// printf("##### I am main() \n");					// keyboard_interrupt
 	input_init ();
+	// printf("##### I am main() \n");					// intq_init
 #ifdef USERPROG
 	exception_init ();
+	// printf("##### I am main() \n");				// 
 	syscall_init ();
+	// printf("##### I am main() \n");				// 
 #endif
 	/* Start thread scheduler and enable interrupts. */
-	thread_start ();				// idle 스레드 생성
+	thread_start ();
+	// printf("##### I am main() \n");				// idle 스레드 생성
 	serial_init_queue ();
+	// printf("##### I am main() \n");
 	timer_calibrate ();
+	// printf("##### I am main() \n");
 
 #ifdef FILESYS
 	/* Initialize file system. */

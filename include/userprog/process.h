@@ -11,4 +11,7 @@ void process_exit (void);
 void process_activate (struct thread *next);
 void argument_stack(char **parse, int count, void **rsp);
 
+/* pid를 입력하여 자식프로세스인지 확인하여 맞다면 thread 구조체 반환 */
+struct thread *get_child_process(int pid);
+
 #endif /* userprog/process.h */

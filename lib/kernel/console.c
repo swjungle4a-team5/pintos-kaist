@@ -62,7 +62,10 @@ static int64_t write_cnt;
 /* Enable console locking. */
 void
 console_init (void) {
+	// printf("\n##### debuging ##### start console_init \n ");
+
 	lock_init (&console_lock);
+	// printf("\n##### debuging ##### after lock_init \n ");
 	use_console_lock = true;
 }
 

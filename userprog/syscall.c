@@ -8,16 +8,40 @@
 #include "threads/flags.h"
 #include "intrinsic.h"
 // #include "init.h"
-#include "lib/user/syscall.h"
+// #include "lib/user/syscall.h"
+
+#include "filesys/filesys.h"
+#include "filesys/file.h"
+#include <list.h>
+#include "threads/palloc.h"
+#include "threads/vaddr.h"
+#include "userprog/process.h"
+#include "threads/synch.h"
 
 void syscall_entry(void);
 void syscall_handler(struct intr_frame *);
+
 void check_address(uintptr_t *addr);
 void get_argument(uintptr_t *rsp, int *arg, int count);
 void halt(void);
 void exit(int status);
 bool create(const char *file, unsigned initial_size);
 bool remove(const char *file);
+int open(const char *file);
+int filesize(int fd);
+int read(int fd, void *buffer, unsigned size);
+int wri1te(int fd, const void *buffer, unsigned size);
+void seek(int fd, unsigned position);
+unsigned tell (int fd);
+void close(int fd);
+
+static struct file *find_file_by_fd(int fd);
+int add_file_to_fdt(struct file *file);
+void remove_file_from_fdt(int fd);
+
+/* Project2-extra */
+const int STDIN = 1;
+const int STDOUT = 2;
 
 /* System call.
  *
@@ -43,6 +67,7 @@ void syscall_init(void)
 	 * mode stack. Therefore, we masked the FLAG_FL. */
 	write_msr(MSR_SYSCALL_MASK,
 			  FLAG_IF | FLAG_TF | FLAG_DF | FLAG_IOPL | FLAG_AC | FLAG_NT);
+	lock_init(&filesys_lock);
 }
 
 /* The main system call interface
@@ -58,7 +83,6 @@ void syscall_handler(struct intr_frame *f UNUSED)
 
 	// TODO: Your implementation goes here.
 	printf("system call!\n");
-	// thread_exit();
 
 	switch (f->R.rax)
 	{
@@ -88,56 +112,50 @@ void syscall_handler(struct intr_frame *f UNUSED)
 
 	/* Create a file. */
 	case SYS_CREATE:
-		// check_address(f->R.rdi);
-		// check_address(f->R.rsi);
-		// if(create(f->R.rdi, f->R.rsi)){
-		// 	printf("create success!");
-		// }
-		// else{
-		// 	printf("create fail!");
-		// }
 		f->R.rax = create(f->R.rdi, f->R.rsi);
 		break;
 
 	/* Delete a file. */
 	case SYS_REMOVE:
-		// if(remove(f->R.rdi)){
-		// 	printf("remove success!");
-		// }
-		// else{
-		// 	printf("remove fail!");
-		// }
 		f->R.rax = remove(f->R.rdi);
 		break;
 
 	/* Open a file. */
 	case SYS_OPEN:
+		f->R.rax = open(f->R.rdi);
 		break;
 
 	/* Obtain a file's size. */
 	case SYS_FILESIZE:
+		f->R.rax = filesize(f->R.rdi);
 		break;
 
 	/* Read from a file. */
 	case SYS_READ:
+		f->R.rax = read(f->R.rdi, f->R.rsi, f->R.rdx);
 		break;
 
 	/* Write to a file. */
 	case SYS_WRITE:
-		// printf("10?!");
 		// rdi, rsi, rdx // fd, buffer, size
+		// int write (int fd, const void *buffer, unsigned size) {
+		// 	return syscall3 (SYS_WRITE, fd, buffer, size); }
+		f->R.rax = write(f->R.rdi, f->R.rsi, f->R.rdx);
 		break;
 
 	/* Change position in a file. */
 	case SYS_SEEK:
+		seek(f->R.rdi, f->R.rsi);
 		break;
 
 	/* Report current position in a file. */
 	case SYS_TELL:
+		f->R.rax = tell(f->R.rdi);
 		break;
 
 	/* Close a file. */
 	case SYS_CLOSE:
+		close(f->R.rdi);
 		break;
 
 	/* Extra for Project 2
@@ -148,6 +166,10 @@ void syscall_handler(struct intr_frame *f UNUSED)
 	case SYS_MOUNT:
 		break;
 	case SYS_UMOUNT:
+		break;
+	default:
+		// thread_exit();
+		exit(-1);
 		break;
 	}
 }
@@ -166,22 +188,6 @@ void check_address(uintptr_t *addr)
 	}
 }
 
-/* get_argument()
- * 유저 스택에 있는 인자들을 커널에 저장하는 함수
- * 스택 포인터(_if->rsp)에 count(인자의 개수) 만큼의 데이터를 arg에 저장
- * int *arg (스택 메모리가 아닌 커널 영역)
- */
-// void get_argument(uintptr_t *rsp, int *arg, int count)
-// {
-// 	*arg = *rsp + 16;
-// 	for(int i=0; i<count; i++){
-// 		check_address(*arg);
-// 		*arg++;
-// 	}
-// 	check_address()
-
-// }
-
 void halt(void){
 	power_off();
 }
@@ -189,27 +195,229 @@ void halt(void){
 void exit(int status){
 	struct  thread *t = thread_current();
 	printf("%s: exit(%d)\n", t->name, status);
+	t->exit_status = status;
 	thread_exit();
 }
 
 bool create(const char *file, unsigned initial_size){
 	check_address(file);
 	return filesys_create (file, initial_size);
-	// if(filesys_create (file, initial_size)){
-	// 	return true;
-	// }
-	// else{
-	// 	return false;
-	// }
 }
 
 bool remove(const char *file){
 	check_address(file);
 	return filesys_remove (file);
-	// if(filesys_remove (file)){
-	// 	return true;
-	// }
-	// else{
-	// 	return false;
-	// }
 }
+
+
+/* 요청받은 파일을 open. 파일 디스크립터가 가득차있다면 다시 닫아준다. */
+int open(const char *file){
+	check_address(file);
+	lock_acquire(&filesys_lock);
+
+	struct file *f_obj = filesys_open(file);
+
+	if(f_obj == NULL){
+		// lock_release(&filesys_lock);	// 여긴 안해도되나??
+		return -1;
+	}
+
+	int fd = add_file_to_fdt(f_obj);
+
+	if(fd==-1){
+		file_close(f_obj);
+	}
+	lock_release(&filesys_lock);
+	return fd;
+}
+
+/* 파일이 열려있다면 바이트 반환, 없다면 -1 반환 */
+int filesize(int fd){
+	struct file *f_obj = find_file_by_fd(fd);
+	if(f_obj==NULL){
+		return -1;
+	}
+	return file_length(f_obj);
+}
+
+/* read()
+ * 요청한 파일을 버퍼에 읽어온다. 읽어들인 바이트를 반환
+ * 열린 파일의 데이터를 읽는 시스템 콜
+ * 성공 시 읽은 바이트 수를 반환, 실패 시 -1 반환
+ * buffer : 읽은 데이터를 저장한 버퍼의 주소 값, size : 읽을 데이터의 크기
+ * fd 값이 0일 때? 키보드의 데이터를 읽어 버퍼에 저장 (input_getc() 이용)
+ */
+int read(int fd, void *buffer, unsigned size){
+	check_address(buffer);
+
+	struct file *f_obj = find_file_by_fd(fd);
+	int ret = 0;
+
+	if(f_obj==NULL){
+		return -1;	
+	}
+	if(f_obj==1){			// STDIN : 표준입력
+		unsigned char *buf = buffer;
+		int i=0;
+		/* 키보드로 적은(버퍼) 내용 받아옴 */
+		for(i; i<size; i++){
+			char c = input_getc();
+			*buf++ = c;
+			if(c=='\n'){
+				break;
+			}
+
+		}
+		ret = i;
+	}
+	else if(f_obj==2){			// STDOUT : 표준출력
+		ret = -1;
+	}
+	else{					// 그 외 파일
+		lock_acquire(&filesys_lock);
+		ret = file_read(f_obj, buffer, size);
+		lock_release(&filesys_lock);
+	}
+	return ret;
+}
+
+/* write()
+ * 열린 파일의 데이터를 기록하는 시스템 콜
+ * 버퍼에 있는 내용을 fd 파일에 작성. 파일에 작성한 바이트 반환
+ * 성공 시 기록한 데이터의 바이트 수를 반환, 실패시 -1 반환
+ * buffer : 기록할 데이터를 저장한 버퍼의 주소 값, size : 기록할 데이터의 크기
+ * fd 값이 1일 때? 버퍼에 저장된 데이터를 화면에 출력 (putbuf() 이용)
+ */
+int write(int fd, const void *buffer, unsigned size){
+	check_address(buffer);
+
+	struct file *f_obj = find_file_by_fd(fd);
+	int ret = 0;
+	
+	if(f_obj==NULL){
+		return -1;
+	}
+
+	if(f_obj==1){				// STDIN : 표준입력
+		ret = -1;
+	}
+	else if(f_obj==2){			// STDOUT : 표준출력
+		putbuf(buffer, size);
+		ret = size;
+	}
+	else{					// 그 외 파일
+		lock_acquire(&filesys_lock);
+		ret = file_write(f_obj, buffer, size);
+		lock_release(&filesys_lock);
+	}
+	return ret;
+}
+
+
+void seek(int fd, unsigned position){
+	struct file *f_obj = find_file_by_fd(fd);
+	
+	if(f_obj <= 2)
+		return;
+
+	file_seek(f_obj, position);
+	// f_obj->pos = position;
+}
+
+
+unsigned tell (int fd){
+	struct file *f_obj = find_file_by_fd(fd);
+
+	if(f_obj <= 2)
+		return;
+	
+	return file_tell(f_obj);
+}
+
+
+void close(int fd){
+	struct thread *curr = thread_current();
+	struct file *f_obj = find_file_by_fd(fd);
+
+	if(f_obj == NULL){
+		return;
+	}
+
+	remove_file_from_fdt(fd);
+
+	curr->fdTable[fd] = NULL;
+
+	if(fd <= 1 || f_obj <= 2){
+		return;
+	}
+
+	file_close(f_obj);
+
+	return;
+}
+
+
+/* find_file_by_fd()
+ * 프로세스의 파일 디스크립터 테이블을 검색하여 파일 객체의 주소를 리턴
+ * 파일 디스크립터로 파일 검색 하여 파일 구조체 반환
+ */
+static struct file *find_file_by_fd(int fd){
+	struct thread *curr = thread_current();
+	// Error - invalid id : 잘못된 fd -> NULL // 이거 아닌가??
+	// 해당 테이블에 파일 객체가 없을 시 NULL 반환
+	if (fd < 0 || fd >= FDCOUNT_LIMIT){
+		return NULL;
+	}
+	return curr->fdTable[fd];
+}
+
+/* add_file_to_fdt()
+ * 파일 객체에 대한 파일 디스크립터 생성 
+ * 새로 만든 파일을 파일 디스크립터 테이블에 추가
+ */
+int add_file_to_fdt(struct file *file){
+
+	/* 현재 스레드의 파일 디스크립터 테이블을 가져온다. */ 
+	struct thread *curr = thread_current();
+	struct file **fdt = curr->fdTable; // file descriptor table
+
+	/* Project2 user programs
+	 * 다음 File Descriptor 값 1 증가
+	 * 최대로 열 수 있는 파일 제한(FDCOUNT_LIMIT)을 넘지 않고, 
+	 * 해당 fd에 이미 열려있는 파일이 있다면 1씩 증가한다.
+	 * ?? 
+	 * 현재스레드의 fdIdx<limit이고 fdt[fdIdx]가 존재한다면 다음 idx 탐색 
+	 * => 빈자리 나올때까지 증가  
+	 */
+	while (curr->fdIdx < FDCOUNT_LIMIT && fdt[curr->fdIdx]){
+		curr->fdIdx++;
+	}
+	
+	/* Error - fdt full */
+	if (curr->fdIdx >= FDCOUNT_LIMIT){
+		return -1;
+	}
+
+	/* 가용한 fd로 fdt[fd] 에 인자로 받은 file을 넣는다. */ 
+	fdt[curr->fdIdx] = file;
+
+	/* 추가된 파일 객체의 File Descriptor 반환 */ 
+	return curr->fdIdx;
+}
+
+/* remove_file_from_fdt()
+ * 파일 디스크립터에 해당하는 파일을 닫고 해당 엔트리 초기화
+ * 파일 테이블에서 fd 제거
+ */
+void remove_file_from_fdt(int fd){
+	struct thread *curr = thread_current();
+
+	/* Error - invalid fd */ 
+	if (fd < 0 || fd >= FDCOUNT_LIMIT){
+		return;
+	}
+
+	curr->fdTable[fd] = NULL;
+	// return;
+}
+

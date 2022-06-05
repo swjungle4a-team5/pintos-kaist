@@ -56,11 +56,17 @@ is_tail (struct list_elem *elem) {
 /* Initializes LIST as an empty list. */
 void
 list_init (struct list *list) {
+	// 여기도 안됨
+	// printf("\n##### debuging ##### start list_init \n ");
+	
 	ASSERT (list != NULL);
 	list->head.prev = NULL;
 	list->head.next = &list->tail;
 	list->tail.prev = &list->head;
 	list->tail.next = NULL;
+	// 여기도 안됨
+	// printf("\n##### debuging ##### end list_init \n ");
+
 }
 
 /* Returns the beginning of LIST.  */
