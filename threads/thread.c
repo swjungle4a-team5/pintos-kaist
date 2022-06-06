@@ -576,30 +576,30 @@ next_thread_to_run(void)
 void do_iret(struct intr_frame *tf)
 {
 	__asm __volatile(
-		"movq %0, %%rsp\n"
-		"movq 0(%%rsp),%%r15\n"
-		"movq 8(%%rsp),%%r14\n"
-		"movq 16(%%rsp),%%r13\n"
-		"movq 24(%%rsp),%%r12\n"
-		"movq 32(%%rsp),%%r11\n"
-		"movq 40(%%rsp),%%r10\n"
-		"movq 48(%%rsp),%%r9\n"
-		"movq 56(%%rsp),%%r8\n"
-		"movq 64(%%rsp),%%rsi\n"
-		"movq 72(%%rsp),%%rdi\n"
-		"movq 80(%%rsp),%%rbp\n"
-		"movq 88(%%rsp),%%rdx\n"
-		"movq 96(%%rsp),%%rcx\n"
-		"movq 104(%%rsp),%%rbx\n"
-		"movq 112(%%rsp),%%rax\n"
-		"addq $120,%%rsp\n"
-		"movw 8(%%rsp),%%ds\n"
-		"movw (%%rsp),%%es\n"
-		"addq $32, %%rsp\n"
-		"iretq"
+		"movq %0, %%rsp\n"				/* tf의 주소를 rsp에 저장 */
+		"movq 0(%%rsp),%%r15\n"			/* rsp위치의 값을 레지스터 r15에 저장 */
+		"movq 8(%%rsp),%%r14\n"			/* rsp + 8 의 위치의 값을 레지스터 r14에 저장 */
+		"movq 16(%%rsp),%%r13\n"		/* rsp + 16 의 위치의 값을 레지스터 r13에 저장 */
+		"movq 24(%%rsp),%%r12\n"		/* rsp + 24 의 위치의 값을 레지스터 r12에 저장 */
+		"movq 32(%%rsp),%%r11\n"		/* rsp + 32 의 위치의 값을 레지스터 r11에 저장 */
+		"movq 40(%%rsp),%%r10\n"		/* rsp + 40 의 위치의 값을 레지스터 r10에 저장 */
+		"movq 48(%%rsp),%%r9\n"			/* rsp + 48 의 위치의 값을 레지스터 r9에 저장 */
+		"movq 56(%%rsp),%%r8\n"			/* rsp + 56 의 위치의 값을 레지스터 r8에 저장 */
+		"movq 64(%%rsp),%%rsi\n"		/* rsp + 64 의 위치의 값을 레지스터 rsi에 저장 */
+		"movq 72(%%rsp),%%rdi\n"		/* rsp + 72 의 위치의 값을 레지스터 rdi에 저장 */
+		"movq 80(%%rsp),%%rbp\n"		/* rsp + 80 의 위치의 값을 레지스터 rbp에 저장 */
+		"movq 88(%%rsp),%%rdx\n"		/* rsp + 88 의 위치의 값을 레지스터 rdx에 저장 */
+		"movq 96(%%rsp),%%rcx\n"		/* rsp + 96 의 위치의 값을 레지스터 rcx에 저장 */
+		"movq 104(%%rsp),%%rbx\n"		/* rsp + 104 의 위치의 값을 레지스터 rbx에 저장 */
+		"movq 112(%%rsp),%%rax\n"		/* rsp + 112 의 위치의 값을 레지스터 rax에 저장 */
+		"addq $120,%%rsp\n"				/* rsp를 120만큼 증가시킴 */
+		"movw 8(%%rsp),%%ds\n"			/* padding을 제외한 값을 레지스터 ds에 저장 */
+		"movw (%%rsp),%%es\n"			/* padding을 제외한 값을 레지스터 es에 저장 */
+		"addq $32, %%rsp\n"				/* rsp를 32만큼 증가시킴 -> rip를 가리킴(?) */
+		"iretq"							/* rip, cs, rflags, rsp, ss는 cpu가 push */
 		:
-		: "g"((uint64_t)tf)
-		: "memory");
+		: "g"((uint64_t)tf)				/* 인자로 tf를 받음 */
+		: "memory");					/* memory의 값이 변경됨 */
 }
 
 /* Switching the thread by activating the new thread's page
