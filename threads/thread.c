@@ -218,6 +218,12 @@ tid_t thread_create(const char *name, int priority,
 	tid = t->tid = allocate_tid();
 
 	/* project2 - user programs */
+	
+	/* parent-child */
+	struct thread *curr = thread_current();
+	list_push_back(&curr->child_list, &t->child);
+	
+	/* file */
 	t->fdTable = palloc_get_multiple(PAL_ZERO, FDT_PAGES);
 	if(t->fdTable == NULL){
 		return TID_ERROR;
@@ -747,6 +753,33 @@ allocate_tid(void)
 	return tid;
 }
 
+/***************************** project 2 *****************************/
+
+
+
+void remove_child_process(tid){
+	struct thread *curr = thread_current();
+	struct list_elem *child;
+	struct thread *t;
+	
+	for(child=list_begin(&curr->child_list); child!=list_end(&curr->child_list); child=list_next(child)){
+		t = list_entry(child, struct thread, child);
+		
+		if(tid == t->tid){
+			list_remove(child);
+			return;
+		}
+	}
+
+	if(!child){
+		return;
+	}
+	
+	return;
+}
+
+
+/***************************** project 1 *****************************/
 /* 스레드를 block상태로 만들고 sleep queue에 삽입 */
 void thread_sleep(int64_t ticks)
 {

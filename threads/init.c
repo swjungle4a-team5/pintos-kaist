@@ -106,7 +106,7 @@ main (void) {
 	gdt_init ();
 	// printf("##### I am main() \n");					// no, global descriptor table 초기화
 #endif
-
+   
 	/* Initialize interrupt handlers. */
 	intr_init ();
 	// printf("##### I am main() \n");					// no

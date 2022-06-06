@@ -35,6 +35,10 @@ void seek(int fd, unsigned position);
 unsigned tell (int fd);
 void close(int fd);
 
+int exec (char *file_name);
+int wait (tid_t pid);
+tid_t fork (const char *thread_name, struct intr_frame *if_);
+
 static struct file *find_file_by_fd(int fd);
 int add_file_to_fdt(struct file *file);
 void remove_file_from_fdt(int fd);
@@ -100,14 +104,18 @@ void syscall_handler(struct intr_frame *f UNUSED)
 
 	/* Clone current process. */
 	case SYS_FORK:
+		f->R.rax = fork(f->R.rdi, f);
 		break;
 
 	/* Switch current process. */
 	case SYS_EXEC:
+		if(exec(f->R.rdi) == -1)
+			exit(-1);
 		break;
 
 	/* Wait for a child process to die. */
 	case SYS_WAIT:
+		f->R.rax = process_wait(f->R.rdi);
 		break;
 
 	/* Create a file. */
@@ -187,6 +195,41 @@ void check_address(uintptr_t *addr)
 		exit(-1);
 	}
 }
+
+
+/* 주어진 파일을 실행한다. */
+int exec(char *file_name)
+{
+	check_address(file_name);
+
+	int siz = strlen(file_name) + 1;
+	char *fn_copy = palloc_get_page(PAL_ZERO);
+
+	if (!fn_copy)
+		exit(-1);
+	strlcpy(fn_copy, file_name, siz);
+
+	if (process_exec(fn_copy) == -1)
+		return -1;
+
+	// Not reachable
+
+	NOT_REACHED();
+
+	return 0;
+}
+
+// int wait (pid_t pid){
+
+// 	return  ;
+// }
+
+
+tid_t fork (const char *thread_name, struct intr_frame *if_){
+	check_address(thread_name);
+	return process_fork(thread_name, if_);
+}
+
 
 void halt(void){
 	power_off();

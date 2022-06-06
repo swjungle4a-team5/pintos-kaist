@@ -90,8 +90,25 @@ initd(void *f_name)
 tid_t process_fork(const char *name, struct intr_frame *if_ UNUSED)
 {
 	/* Clone current thread to new thread.*/
-	return thread_create(name,
-						 PRI_DEFAULT, __do_fork, thread_current());
+	struct thread *parent = thread_current();
+
+	memcpy(&parent->tf, if_, sizeof(struct intr_frame));
+	
+	/* __do_fork를 실행하는 스레드 생성, 현재 스레드를 인자로 넘겨줌 */
+	tid_t tid = thread_create(name, PRI_DEFAULT, __do_fork, parent);
+	
+	if(tid==TID_ERROR){
+		return TID_ERROR;
+	}
+
+	// struct thread *curr = thread_current();
+	struct thread *ch = get_child_process(tid);
+
+	sema_down(&ch->fork_sema);	
+	// if(ch->exit_status == -1){	// tmpx
+	// 	return TID_ERROR;
+	// }
+	return tid;		
 }
 
 #ifndef VM
@@ -107,22 +124,31 @@ duplicate_pte(uint64_t *pte, void *va, void *aux)
 	bool writable;
 
 	/* 1. TODO: If the parent_page is kernel page, then return immediately. */
-
+	if(is_kernel_vaddr(va)){
+		return false;
+	}
 	/* 2. Resolve VA from the parent's page map level 4. */
 	parent_page = pml4_get_page(parent->pml4, va);
-
+	if(parent_page == NULL){
+		return false;
+	}
 	/* 3. TODO: Allocate new PAL_USER page for the child and set result to
 	 *    TODO: NEWPAGE. */
-
+	newpage = palloc_get_page(PAL_USER|PAL_ZERO);
+	if(newpage == NULL){
+		return false;
+	}
 	/* 4. TODO: Duplicate parent's page to the new page and
 	 *    TODO: check whether parent's page is writable or not (set WRITABLE
 	 *    TODO: according to the result). */
-
+	memcpy(newpage, parent_page, PGSIZE);
+	writable = is_writable(pte);
 	/* 5. Add new page to child's page table at address VA with WRITABLE
 	 *    permission. */
 	if (!pml4_set_page(current->pml4, va, newpage, writable))
 	{
 		/* 6. TODO: if fail to insert page, do error handling. */
+		return false;
 	}
 	return true;
 }
@@ -136,16 +162,24 @@ static void
 __do_fork(void *aux)
 {
 	struct intr_frame if_;
+	/* process_fork에서 전달받은 스레드 */
 	struct thread *parent = (struct thread *)aux;
+	/* process_fork에서 생성한 스레드 */
 	struct thread *current = thread_current();
+
 	/* TODO: somehow pass the parent_if. (i.e. process_fork()'s if_) */
-	struct intr_frame *parent_if;
-	bool succ = true;
+	struct intr_frame *parent_if = &parent->tf; 
+	bool succ = true;	// 무사히 마지막까지 가면 그대로 반환
 
 	/* 1. Read the cpu context to local stack. */
+	/* 부모의 intr_frame을 if_에 복사 */
 	memcpy(&if_, parent_if, sizeof(struct intr_frame));
+	/* 리턴값을 0으로 설정 - 자식 프로세스 */ 
+	if_.R.rax = 0;
+
 
 	/* 2. Duplicate PT */
+	/* 새로운 페이지테이블을 할당?? 생성도함? */
 	current->pml4 = pml4_create();
 	if (current->pml4 == NULL)
 		goto error;
@@ -156,6 +190,7 @@ __do_fork(void *aux)
 	if (!supplemental_page_table_copy(&current->spt, &parent->spt))
 		goto error;
 #else
+	/* 부모 프로세스의 페이지 테이블을 복사하는 함수 */
 	if (!pml4_for_each(parent->pml4, duplicate_pte, parent))
 		goto error;
 #endif
@@ -165,6 +200,40 @@ __do_fork(void *aux)
 	 * TODO:       in include/filesys/file.h. Note that parent should not return
 	 * TODO:       from the fork() until this function successfully duplicates
 	 * TODO:       the resources of parent.*/
+	
+	if(parent->fdIdx == FDCOUNT_LIMIT){
+		goto error;
+	}
+	
+	/* DUP2 */
+	/* Project2-extra) multiple fds sharing same file - use associative map
+	(e.g. dict, hashmap) to duplicate these relationships
+	other test-cases like multi-oom don't need this feature */
+	// const int MAPLEN = 10;
+	// struct MapElem map[10];
+	// key: 부모의 fd, value : 같은 파일을 가리키는 다른 fd
+	// dup2를 수행하면 커서까지 공유함
+
+	/* index for filling map */
+	int dupCount = 0;
+
+
+
+	current->fdTable[0] = parent->fdTable[0];
+	current->fdTable[1] = parent->fdTable[1];
+
+	for(int i=2; i<parent->fdIdx; i++){
+		struct file * f_obj = parent->fdTable[i];
+		if(f_obj){
+			current->fdTable[i] = file_duplicate(f_obj);
+		}
+		else{
+			// break;
+			continue; // ?? 중간에 NULL이 가능? 먼저 닫을 수 있으니까..? ㅇㅇ
+		}
+	}
+	current->fdIdx = parent->fdIdx;
+	sema_up(&current->fork_sema);
 
 	process_init();
 
@@ -172,7 +241,10 @@ __do_fork(void *aux)
 	if (succ)
 		do_iret(&if_);
 error:
-	thread_exit();
+	current->exit_status = TID_ERROR;
+	sema_up(&current->fork_sema);
+	exit(TID_ERROR);
+	// thread_exit();
 }
 
 /* Switch the current execution context to the f_name.
@@ -187,6 +259,18 @@ int process_exec(void *f_name)
 	 * This is because when current thread rescheduled,
 	 * it stores the execution information to the member. */
 
+	/*
+	 * SEL_UDSEG : user data segment  SEL_UCSEG : useo code segment
+	 */
+	struct intr_frame _if;
+	_if.cs = SEL_UCSEG;					  // code selector
+	_if.ds = _if.es = _if.ss = SEL_UDSEG; // data selector
+	_if.eflags = FLAG_IF | FLAG_MBS;	  // Interrupt Flag, Parity Flag 
+
+	/* We first kill the current context */
+	//
+	process_cleanup(); // current page의 pml4 초기화 // 더 찾아보기
+	
 	/* To Do : Argument passing
 	 * parsing file name and arguments
 	 */
@@ -202,22 +286,15 @@ int process_exec(void *f_name)
 		cnt++;
 	}
 
-	/*
-	 * SEL_UDSEG : user data segment  SEL_UCSEG : useo code segment
-	 */
-	struct intr_frame _if;
-	_if.cs = SEL_UCSEG;					  // code selector
-	_if.ds = _if.es = _if.ss = SEL_UDSEG; // data selector
-	_if.eflags = FLAG_IF | FLAG_MBS;	  // Interrupt Flag, Parity Flag 
 
-	/* We first kill the current context */
-	//
-	process_cleanup(); // current page의 pml4 초기화 // 더 찾아보기
 
 	/* And then load the binary */
 	success = load(file_name, &_if);
-	
 	// printf("\n##### debuging ##### after load \n ");
+		
+	if (!success)
+		palloc_free_page(file_name);
+		return -1;
 		
 	argument_stack(parse, cnt, &_if.rsp);
 	_if.R.rdi = cnt;
@@ -229,9 +306,6 @@ int process_exec(void *f_name)
 	/* ------------ Argument Passing ------------*/
 
 	/* If load failed, quit. */
-	if (!success)
-		palloc_free_page(file_name);
-		return -1;
 
 	/* Start switched process. */
 	do_iret(&_if);
@@ -306,10 +380,20 @@ int process_wait(tid_t child_tid UNUSED)
 	 * XXX:       to add infinite loop here before
 	 * XXX:       implementing the process_wait. */
 	// while (1);
-	for (int i = 0; i < 10000000000; i++){}
-	// timer_sleep(10);
+	struct thread *child = get_child_process(child_tid);
+	
+	if(!child){
+		return -1;
+	}
 
-	return -1;
+	sema_down(&child->wait_sema);
+
+	int exit_status = child->exit_status;
+	list_remove(&child->child);
+
+	sema_up(&child->free_sema);
+
+	return exit_status;
 }
 
 /* Exit the process. This function is called by thread_exit (). */
@@ -329,10 +413,10 @@ void process_exit(void)
 	process_cleanup();
 
 	// /* 부모 프로세스가 자식 프로세스의 종료상태 확인하게 함 */
-	// sema_up(&curr->wait_sema);
+	sema_up(&curr->wait_sema);
 
 	// /* 부모 프로세스가 자식 프로세스 종료인자 받을때 까지 대기 */
-	// sema_down(&curr->free_sema);
+	sema_down(&curr->free_sema);
 }
 
 /* Free the current process's resources. */
@@ -376,7 +460,7 @@ void process_activate(struct thread *next)
 	pml4_activate(next->pml4);
 
 	/* Set thread's kernel stack for use in processing interrupts. */
-	tss_update(next); // tss->rsp0 = thread + PGSIZE(1<<12)
+	tss_update(next); // tss->rsp0 = thread + PGSIZE(1<<12), 커널의 스택포인터 업데이트
 }
 
 /* We load ELF binaries.  The following definitions are taken
@@ -479,6 +563,8 @@ load(const char *file_name, struct intr_frame *if_)
 		printf("load: %s: open failed\n", file_name);
 		goto done;
 	}
+
+	file_deny_write(file);
 
 	/* Read and verify executable header. */
 	if (file_read(file, &ehdr, sizeof ehdr) != sizeof ehdr || memcmp(ehdr.e_ident, "\177ELF\2\1\1", 7) || ehdr.e_type != 2 || ehdr.e_machine != 0x3E // amd64
@@ -803,3 +889,22 @@ setup_stack(struct intr_frame *if_)
 	return success;
 }
 #endif /* VM */
+
+struct thread *get_child_process(int pid){
+	struct thread *curr = thread_current();
+	struct list_elem *child;
+	struct thread *t;
+
+	for(child=list_begin(&curr->child_list); child!=list_end(&curr->child_list); child=list_next(child)){
+		t = list_entry(child, struct thread, child);
+		if(pid == t->tid){
+			// break;
+			return t;
+		}
+	}
+	// if(!child){
+		return NULL;
+	// }
+	// return t;
+
+}
