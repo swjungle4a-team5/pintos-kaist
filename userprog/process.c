@@ -34,7 +34,6 @@ static void
 process_init(void)
 {
 	struct thread *current = thread_current();
-	// lock_init(&filesys_lock);
 }
 
 /* Starts the first userland program, called "initd", loaded from FILE_NAME.
@@ -67,10 +66,6 @@ tid_t process_create_initd(const char *file_name)
 static void
 initd(void *f_name)
 {
-#ifdef VM
-	supplemental_page_table_init(&thread_current()->spt);
-#endif
-
 	process_init();
 
 	if (process_exec(f_name) < 0)
@@ -182,12 +177,13 @@ __do_fork(void *aux)
 
 	/* process_fork에서 복사 해두었던 intr_frame */
 	parent_if = &parent->parent_if;
+	// current->running = file_duplicate(parent->running);
 
 	/* 1. Read the cpu context to local stack. */
 
 	/* 부모의 intr_frame을 if_에 복사 */
 	memcpy(&if_, parent_if, sizeof(struct intr_frame));
-	/* if_의 리턴값을 0으로 설정? */
+	/* if_의 리턴값을 0으로 설정 */
 	if_.R.rax = 0;
 
 	/* 2. Duplicate Page table */
@@ -292,7 +288,12 @@ int process_exec(void *f_name)
 
 	/* We first kill the current context */
 	//
-	process_cleanup(); // current page의 pml4 초기화
+	process_cleanup(); // current page의 pml4 초기화'
+
+#ifdef VM
+	supplemental_page_table_init(&thread_current()->spt);
+#endif
+
 	char *parse[128];  // It is better not to set an arbitrary limit. You may impose a limit of 128 open files per process, if necessary. But if you want to implement extra requirements, there should be no limitation.
 
 	char *next_ptr;
@@ -307,7 +308,7 @@ int process_exec(void *f_name)
 
 	/* And then load the binary */
 	success = load(file_name, &_if);
-
+	
 	if (!success)
 	{
 		palloc_free_page(file_name);
@@ -643,6 +644,7 @@ load(const char *file_name, struct intr_frame *if_)
 					read_bytes = 0;
 					zero_bytes = ROUND_UP(page_offset + phdr.p_memsz, PGSIZE);
 				}
+				
 				if (!load_segment(file, file_page, (void *)mem_page,
 								  read_bytes, zero_bytes, writable))
 					goto done;
@@ -817,7 +819,7 @@ install_page(void *upage, void *kpage, bool writable)
 	 * address, then map our page there. */
 	return (pml4_get_page(t->pml4, upage) == NULL && pml4_set_page(t->pml4, upage, kpage, writable));
 }
-#else
+#else 
 /* From here, codes will be used after project 3.
  * If you want to implement the function for only project 2, implement it on the
  * upper block. */
@@ -828,6 +830,19 @@ lazy_load_segment(struct page *page, void *aux)
 	/* TODO: Load the segment from the file */
 	/* TODO: This called when the first page fault occurs on address VA. */
 	/* TODO: VA is available when calling this function. */
+	struct aux_data* aux_dt = aux;
+	struct file* f = aux_dt->file;
+	file_seek(f, aux_dt->ofs);
+
+	if (file_read(f, page->frame->kva, aux_dt->read_bytes) != (int)aux_dt->read_bytes){
+		palloc_free_page(page->frame->kva);
+		return false;
+	}
+
+	memset(page->frame->kva + aux_dt->read_bytes, 0, aux_dt->zero_bytes);
+	free(aux_dt);
+
+	return true;
 }
 
 /* Loads a segment starting at offset OFS in FILE at address
@@ -861,14 +876,23 @@ load_segment(struct file *file, off_t ofs, uint8_t *upage,
 		size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
 		/* TODO: Set up aux to pass information to the lazy_load_segment. */
-		void *aux = NULL;
+		struct aux_data *aux_dt = calloc(1,sizeof(struct aux_data));
+
+		aux_dt->file = file;
+		aux_dt->ofs = ofs;
+		aux_dt->read_bytes = page_read_bytes;
+		aux_dt->zero_bytes = page_zero_bytes;
+		void *aux = aux_dt;
 		if (!vm_alloc_page_with_initializer(VM_ANON, upage,
-											writable, lazy_load_segment, aux))
+											writable, lazy_load_segment, aux)){
+			free(aux_dt);
 			return false;
+		}
 
 		/* Advance. */
 		read_bytes -= page_read_bytes;
 		zero_bytes -= page_zero_bytes;
+		ofs += page_read_bytes;
 		upage += PGSIZE;
 	}
 	return true;
@@ -886,6 +910,12 @@ setup_stack(struct intr_frame *if_)
 	 * TODO: You should mark the page is stack. */
 	/* TODO: Your code goes here */
 
+	if (vm_alloc_page(VM_ANON | VM_MARKER_0, stack_bottom, true) &&
+		vm_claim_page(stack_bottom)){
+		if_->rsp = USER_STACK;
+		success = true;
+		// memset(stack_bottom, 0, PGSIZE);
+	}
 	return success;
 }
 #endif /* VM */

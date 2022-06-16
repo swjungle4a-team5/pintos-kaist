@@ -366,7 +366,7 @@ void palloc_free_multiple(void *pages, size_t page_cnt)
 #ifndef NDEBUG
 	memset(pages, 0xcc, PGSIZE * page_cnt);
 #endif
-	ASSERT(bitmap_all(pool->used_map, page_idx, page_cnt));
+	ASSERT(bitmap_all(pool->used_map, page_idx, page_cnt)); // 해당 cnt만큼의 페이지가 모두 채워져있어야 통과
 	bitmap_set_multiple(pool->used_map, page_idx, page_cnt, false);
 }
 

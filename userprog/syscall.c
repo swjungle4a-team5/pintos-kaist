@@ -15,6 +15,7 @@
 #include "threads/vaddr.h"
 #include "userprog/process.h"
 #include "threads/synch.h"
+#include "include/vm/vm.h"
 
 void syscall_entry(void);
 void syscall_handler(struct intr_frame *);
@@ -81,6 +82,8 @@ void syscall_handler(struct intr_frame *f UNUSED)
 {
 	// TODO: Your implementation goes here.
 	// printf("syscall! , %d\n",f->R.rax);
+	struct thread*t = thread_current();
+	t->rsp = f->rsp;
 	switch (f->R.rax)
 	{
 	case SYS_HALT:
@@ -140,11 +143,17 @@ void syscall_handler(struct intr_frame *f UNUSED)
 /* 사용할 수 있는 주소인지 확인하는 함수. 사용 불가 시 -1 종료 */
 void check_address(const uint64_t *uaddr)
 {
-	struct thread *cur = thread_current();
-	if (uaddr == NULL || !(is_user_vaddr(uaddr)) || !pml4_get_page(cur->pml4, uaddr))
+
+	#ifndef VM
+	if (uaddr == NULL || !(is_user_vaddr(uaddr)) || !pml4_get_page(thread_current()->pml4, uaddr))
 	{
 		exit(-1);
 	}
+	#else
+	if (uaddr == NULL || !(is_user_vaddr(uaddr))){
+		exit(-1);
+	}
+	#endif
 }
 /* find_file_by_fd()
  * 프로세스의 파일 디스크립터 테이블을 검색하여 파일 객체의 주소를 리턴
@@ -338,6 +347,12 @@ int read(int fd, void *buffer, unsigned size)
 	check_address(buffer);
 	int ret = 0;
 	struct thread *cur = thread_current();
+
+	#ifdef VM
+		/* project3 - writable이 true가 아닌데, buffer에 쓰려고하면 안됨. */
+		struct page* p = spt_find_page(&cur->spt, buffer);
+		if (p && !p->writable) exit(-1);
+	#endif
 
 	struct file *fileobj = find_file_by_fd(fd);
 	if (!fileobj)

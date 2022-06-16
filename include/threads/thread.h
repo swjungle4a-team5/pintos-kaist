@@ -149,6 +149,8 @@ struct thread
 
 	/* 현재 실행 중인 파일 */
 	struct file *running;
+
+	uintptr_t rsp;
 };
 
 /* If false (default), use round-robin scheduler.

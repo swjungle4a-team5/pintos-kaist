@@ -150,7 +150,7 @@ page_fault(struct intr_frame *f)
 
 	/* Count page faults. */
 	page_fault_cnt++;
-
+	exit(-1); // 에러 메시지 출력을 방지하기 위해 exit(-1) 을 호출하도록 수정
 	/* If the fault is true fault, show info and exit. */
 	printf("Page fault at %p: %s error %s page in %s context.\n",
 		   fault_addr,
@@ -159,5 +159,5 @@ page_fault(struct intr_frame *f)
 		   user ? "user" : "kernel");
 
 	// kill(f);
-	exit(-1); // 에러 메시지 출력을 방지하기 위해 exit(-1) 을 호출하도록 수정
+	
 }

@@ -28,7 +28,6 @@ uninit_new (struct page *page, void *va, vm_initializer *init,
 		enum vm_type type, void *aux,
 		bool (*initializer)(struct page *, enum vm_type, void *)) {
 	ASSERT (page != NULL);
-
 	*page = (struct page) {
 		.operations = &uninit_ops,
 		.va = va,
@@ -46,11 +45,10 @@ uninit_new (struct page *page, void *va, vm_initializer *init,
 static bool
 uninit_initialize (struct page *page, void *kva) {
 	struct uninit_page *uninit = &page->uninit;
-
 	/* Fetch first, page_initialize may overwrite the values */
 	vm_initializer *init = uninit->init;
 	void *aux = uninit->aux;
-
+	/* 설계에 따라 수정이 필요한 함수 - 아직 수정된 부분 없음. */
 	/* TODO: You may need to fix this function. */
 	return uninit->page_initializer (page, uninit->type, kva) &&
 		(init ? init (page, aux) : true);
@@ -65,4 +63,6 @@ uninit_destroy (struct page *page) {
 	struct uninit_page *uninit UNUSED = &page->uninit;
 	/* TODO: Fill this function.
 	 * TODO: If you don't have anything to do, just return. */
+	if (uninit->aux != NULL) free(uninit->aux);
+	return;
 }
